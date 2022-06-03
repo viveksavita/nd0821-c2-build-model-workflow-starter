@@ -7,6 +7,8 @@ import logging
 import os
 import shutil
 import matplotlib.pyplot as plt
+from mlflow.models import infer_signature
+import tempfile
 
 import mlflow
 import json
@@ -80,9 +82,9 @@ def go(args):
 
     # Compute r2 and MAE
     logger.info("Scoring")
-    r_squared = sk_pipe.score(X_val, y_val)
+    r_squared = sk_pipe.score(X_val[processed_features], y_val)
 
-    y_pred = sk_pipe.predict(X_val)
+    y_pred = sk_pipe.predict(X_val[processed_features])
     mae = mean_absolute_error(y_val, y_pred)
 
     logger.info(f"Score: {r_squared}")
@@ -90,21 +92,23 @@ def go(args):
 
     logger.info("Exporting model")
 
+    with tempfile.TemporaryDirectory() as temp_dir:
+
+       export_path = os.path.join(temp_dir, "random_forest_dir")
+
     # Save model package in the MLFlow sklearn format
     if os.path.exists("random_forest_dir"):
         shutil.rmtree("random_forest_dir")
 
-    signature = infer_signature(X_val[processed_features], y_pred)
+    #signature = infer_signature(X_val[processed_features], y_pred)
 
-    #with tempfile.TemporaryDirectory() as temp_dir:
-
-     #   export_path = os.path.join(temp_dir, "model_export")
+    
 
     mlflow.sklearn.save_model(
             sk_pipe,
-            random_forest_dir,
+            export_path,
             serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_CLOUDPICKLE,
-            signature=signature,
+            #signature=signature,
             input_example=X_val.iloc[:2],
         )
 
@@ -113,7 +117,7 @@ def go(args):
         type="model_export",
         description="Random Forest pipeline export",
     )
-    artifact.add_dir(random_forest_dir)
+    artifact.add_dir(export_path)
 
     run.log_artifact(artifact)
 
@@ -157,10 +161,10 @@ def go(args):
 
 def plot_feature_importance(pipe, feat_names):
     # We collect the feature importance for all non-nlp features first
-    feat_imp = pipe["random_forest"].feature_importances_[: len(feat_names)-1]
+    feat_imp = pipe["random_Forest"].feature_importances_[: len(feat_names)-1]
     # For the NLP feature we sum across all the TF-IDF dimensions into a global
     # NLP importance
-    nlp_importance = sum(pipe["random_forest"].feature_importances_[len(feat_names) - 1:])
+    nlp_importance = sum(pipe["random_Forest"].feature_importances_[len(feat_names) - 1:])
     feat_imp = np.append(feat_imp, nlp_importance)
     fig_feat_imp, sub_feat_imp = plt.subplots(figsize=(10, 10))
     # idx = np.argsort(feat_imp)[::-1]
@@ -253,7 +257,7 @@ def get_inference_pipeline(rf_config, max_tfidf_features):
     sk_pipe = Pipeline(
         steps=[
             ("preprocessor", preprocessor),
-            ("classifier", random_Forest),
+            ("random_Forest", random_Forest),
         ]
     )
 
@@ -317,3 +321,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     go(args)
+
